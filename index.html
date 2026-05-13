@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- BYPASS HOTLINK PROTECTION: Menyembunyikan origin saat request gambar ke CDN luar agar Thumbnail muncul -->
+    <!-- BYPASS HOTLINK PROTECTION: Menyembunyikan origin saat request gambar ke CDN luar -->
     <meta name="referrer" content="no-referrer">
     
-    <title>DracinHub | Nonton Drama Pendek Premium</title>
+    <title>DracinHub | Sansekai API Version</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- HLS.js untuk decode stream video .m3u8 (Mengatasi Video Layar Hitam 0:00) -->
+    <!-- HLS.js untuk decode stream .m3u8 -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
     <style>
@@ -43,7 +43,7 @@
             <div class="text-center mb-6">
                 <i class="fa-solid fa-crown text-5xl text-yellow-500 mb-3 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]"></i>
                 <h2 class="text-2xl font-bold text-white">Akses VIP Dibutuhkan</h2>
-                <p class="text-slate-400 text-sm mt-2">Episode ini terkunci. Tukarkan token VIP Anda untuk memutar episode ini.</p>
+                <p class="text-slate-400 text-sm mt-2">Episode ini terkunci dari server sumber. Masukkan token VIP untuk melewati.</p>
             </div>
             <input type="text" id="voucherInput" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-center text-white font-mono tracking-[0.2em] uppercase outline-none mb-4" placeholder="KODE TOKEN">
             <button onclick="redeemToken()" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-lg transition-colors">Aktifkan Akses</button>
@@ -90,7 +90,9 @@
                 </div>
                 
                 <div class="flex w-full md:w-auto items-center gap-2" id="navControls">
+                    <!-- Ditambahkan Freereels di pilihan -->
                     <select id="sourceFilter" onchange="loadData()" class="bg-slate-800 border border-slate-600 text-sm rounded-lg p-2.5 outline-none text-white">
+                        <option value="freereels">FreeReels</option>
                         <option value="dramabox">DramaBox</option>
                         <option value="reelshort">ReelShort</option>
                         <option value="shortmax">ShortMax</option>
@@ -127,7 +129,7 @@
                 
                 <div id="loader" class="hidden flex flex-col items-center py-20">
                     <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-700 h-12 w-12 mb-4"></div>
-                    <p class="text-slate-400 text-sm">Mengambil data...</p>
+                    <p class="text-slate-400 text-sm">Mengambil data dari Sansekai...</p>
                 </div>
 
                 <div id="movieGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"></div>
@@ -203,30 +205,25 @@
 
     <!-- ================= LOGIC ================= -->
     <script>
-        // Konfigurasi Database Lokal (Browser Storage)
         const DB_USERS = "dracin_users";
         const DB_TOKENS = "dracin_tokens";
         const DB_SESSION = "dracin_session";
 
-        // Konfigurasi Kredensial Admin & Token Statis
         const ADMIN_USER = "JonperiksaJon";
         const ADMIN_PASS = "Lordgemini22";
         const STATIC_TOKEN = "12345";
 
-        // Konfigurasi API Anichin
-        const API_BASE = "https://api.anichin.bio";
-        const API_KEY = "TRIAL-ANICHIN-2026";
+        // MENGGUNAKAN SANSEKAI API SEBAGAI SUMBER BARU
+        const API_BASE = "https://api.sansekai.my.id";
         
-        // CORS Proxy: Memastikan request dari Github Pages / browser tidak diblokir oleh server Anichin
-        // Jika API Error, Anda bisa mencoba proxy alternatif seperti: "https://api.allorigins.win/raw?url="
-        const CORS_PROXY = "https://corsproxy.io/?url=";
+        // CORS Proxy: Memastikan request dari Github Pages diterima oleh API Sansekai
+        const CORS_PROXY = "https://api.allorigins.win/raw?url=";
 
         let activeUser = null;
-        let apiSource = 'dramabox';
+        let apiSource = 'freereels'; // Default ke FreeReels
         let playerContext = {};
-        let hlsInstance = null; // Menyimpan instance HLS.js untuk memutar video .m3u8
+        let hlsInstance = null; 
 
-        // Helper Database Lokal
         const getDB = (k) => JSON.parse(localStorage.getItem(k)) || {};
         const setDB = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
@@ -238,7 +235,6 @@
             setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translate(-50%, -150%)'; }, 3000);
         }
 
-        // Inisialisasi Akun Admin dan Token 12345 secara otomatis
         function initSystemDB() {
             let u = getDB(DB_USERS), t = getDB(DB_TOKENS);
             if (!u[ADMIN_USER]) u[ADMIN_USER] = { password: ADMIN_PASS, role: 'admin', vipUntil: 4102444800000 };
@@ -287,7 +283,6 @@
                 
                 if(v === 'admin') renderAdminPanel();
                 
-                // Matikan video jika keluar dari player
                 if(v !== 'player') {
                     document.getElementById('videoPlayer').pause();
                     if(hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
@@ -315,22 +310,17 @@
             } else switchView('auth');
         }
 
-        // Fungsi fetch utama yang memotong blokir CORS
         async function fetchAPI(endpoint, params = {}) {
             const urlObj = new URL(`${API_BASE}/${apiSource}/${endpoint}`);
             Object.keys(params).forEach(k => urlObj.searchParams.append(k, params[k]));
             try {
-                // Encode URI disisipkan ke dalam Proxy
-                const targetUrl = encodeURIComponent(urlObj.toString());
-                const res = await fetch(`${CORS_PROXY}${targetUrl}`, { 
-                    headers: { 'X-API-Key': API_KEY }
-                });
-                
-                if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+                // Header API-KEY dari Anichin telah dihapus karena Sansekai berbeda
+                const res = await fetch(`${CORS_PROXY}${encodeURIComponent(urlObj.toString())}`);
+                if (!res.ok) throw new Error(res.status);
                 return await res.json();
             } catch (err) {
-                console.error("Fetch API Error:", err);
-                showToast("Gagal menyambung ke server/API Limit", "error");
+                showToast("Koneksi ke Sansekai API gagal/terblokir", "error");
+                console.error(err);
                 return null;
             }
         }
@@ -340,7 +330,6 @@
             document.getElementById('gridTitle').innerText = `Trending: ${apiSource}`;
             document.getElementById('movieGrid').innerHTML = '';
             document.getElementById('loader').classList.remove('hidden');
-            
             const data = await fetchAPI('trending');
             document.getElementById('loader').classList.add('hidden');
             renderGrid(data?.items || []);
@@ -353,7 +342,6 @@
             document.getElementById('gridTitle').innerText = `Search: ${q}`;
             document.getElementById('movieGrid').innerHTML = '';
             document.getElementById('loader').classList.remove('hidden');
-            
             const data = await fetchAPI('search', { query: q });
             document.getElementById('loader').classList.add('hidden');
             renderGrid(data?.items || []);
@@ -361,13 +349,12 @@
 
         function renderGrid(items) {
             const grid = document.getElementById('movieGrid');
-            if(!items.length) return grid.innerHTML = `<div class="col-span-full text-center py-10 text-slate-500">Nihil data atau Request terlalu banyak (Rate Limit).</div>`;
+            if(!items.length) return grid.innerHTML = `<div class="col-span-full text-slate-500 py-10 text-center">Nihil data dari server Sansekai.</div>`;
             
             items.forEach(i => {
                 grid.innerHTML += `
                     <div onclick="initPlayer('${i.id}', '${i.title.replace(/'/g, "\\'")}', ${i.episodes})" class="bg-slate-800 rounded-xl overflow-hidden cursor-pointer card-hover border border-slate-700">
                         <div class="relative aspect-[3/4] bg-slate-900">
-                            <!-- Referrer Policy sudah diatur di tag Head (no-referrer), maka gambar harusnya muncul -->
                             <img src="${i.thumbnail || ''}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/300x400/1e293b/475569?text=No+Cover'">
                             <div class="absolute top-2 right-2 bg-slate-900/80 text-xs font-bold px-2 py-1 rounded text-yellow-400">${i.episodes} Eps</div>
                         </div>
@@ -404,23 +391,23 @@
             const vid = document.getElementById('videoPlayer');
             const ps = document.getElementById('playerState');
             vid.pause(); vid.classList.add('hidden');
-            if(hlsInstance) hlsInstance.destroy(); // Bersihkan player lama
+            if(hlsInstance) hlsInstance.destroy();
             
             ps.classList.remove('hidden');
             document.getElementById('psIcon').className = "fa-solid fa-circle-notch fa-spin text-5xl text-rose-500 mb-3";
-            document.getElementById('psText').innerText = "Mengekstrak URL Video...";
+            document.getElementById('psText').innerText = "Resolving stream...";
 
             const data = await fetchAPI('episode', { id: playerContext.id, ep });
             
             if(!data) {
                 document.getElementById('psIcon').className = "fa-solid fa-triangle-exclamation text-yellow-500 text-5xl mb-3";
-                document.getElementById('psText').innerText = "Gagal memuat URL / Terblokir";
+                document.getElementById('psText').innerText = "Gagal memuat URL dari Sansekai";
                 return;
             }
 
             if(data.locked && !isVIP()) {
                 document.getElementById('psIcon').className = "fa-solid fa-lock text-rose-500 text-5xl mb-3";
-                document.getElementById('psText').innerText = "Episode VIP (Terkunci)";
+                document.getElementById('psText').innerText = "Episode VIP";
                 openModal('vipModal');
                 return;
             }
@@ -429,32 +416,29 @@
                 ps.classList.add('hidden');
                 vid.classList.remove('hidden');
                 
-                // ===== LOGIKA HLS.js UNTUK MEMUTAR .m3u8 =====
-                // Jika video URL berekstensi .m3u8, gunakan HLS.js agar bisa diputar di PC/Chrome
+                // ===== LOGIKA PEMUTAR HLS/M3U8 =====
                 if (data.videoUrl.includes('.m3u8')) {
                     if (Hls.isSupported()) {
                         hlsInstance = new Hls();
                         hlsInstance.loadSource(data.videoUrl);
                         hlsInstance.attachMedia(vid);
                         hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
-                            vid.play().catch(e => console.log("Autoplay dicegah oleh browser"));
-                        });
-                        hlsInstance.on(Hls.Events.ERROR, function (event, data) {
-                            if (data.fatal) console.error("HLS Error:", data);
+                            vid.play().catch(e => console.log("Autoplay dicegah browser"));
                         });
                     } 
-                    // Fallback untuk Safari / iOS yang native support .m3u8
                     else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
                         vid.src = data.videoUrl;
                         vid.addEventListener('loadedmetadata', function() {
-                            vid.play().catch(e => console.log("Autoplay dicegah oleh browser"));
+                            vid.play().catch(e => console.log("Autoplay dicegah browser"));
                         });
                     }
                 } else {
-                    // MP4 Standar
                     vid.src = data.videoUrl;
-                    vid.play().catch(e => console.log("Autoplay dicegah oleh browser"));
+                    vid.play().catch(e => console.log("Autoplay dicegah browser"));
                 }
+            } else {
+                 document.getElementById('psIcon').className = "fa-solid fa-video-slash text-rose-500 text-5xl mb-3";
+                 document.getElementById('psText').innerText = "Video URL Kosong/Tidak Diberikan Server";
             }
         }
 
@@ -469,7 +453,7 @@
                 
                 let u = getDB(DB_USERS);
                 let start = activeUser.vipUntil > Date.now() ? activeUser.vipUntil : Date.now();
-                u[activeUser.username].vipUntil = start + (t[code].duration * 86400000); // Konversi hari ke milidetik
+                u[activeUser.username].vipUntil = start + (t[code].duration * 86400000);
                 setDB(DB_USERS, u);
                 
                 if(!t[code].isStatic) { t[code].used = true; setDB(DB_TOKENS, t); }
@@ -479,13 +463,10 @@
             } else showToast("Token invalid", "error");
         }
 
-        // --- Admin Panel Controls ---
+        // --- Admin Controls ---
         function switchAdminTab(t) {
             document.getElementById('adminTabUsers').classList.toggle('hidden', t !== 'users');
             document.getElementById('adminTabTokens').classList.toggle('hidden', t !== 'tokens');
-            
-            document.getElementById('tabUsers').className = t === 'users' ? "pb-2 text-purple-400 border-b-2 border-purple-400 font-semibold" : "pb-2 text-slate-400 border-b-2 border-transparent hover:text-white";
-            document.getElementById('tabTokens').className = t === 'tokens' ? "pb-2 text-purple-400 border-b-2 border-purple-400 font-semibold" : "pb-2 text-slate-400 border-b-2 border-transparent hover:text-white";
         }
 
         function renderAdminPanel() {
@@ -493,43 +474,21 @@
             const tbodyU = document.getElementById('admUserList'), tbodyT = document.getElementById('admTokenList');
             
             tbodyU.innerHTML = Object.keys(u).map(k => `
-                <tr class="border-b border-slate-700">
-                    <td class="py-2 text-white">${k}</td>
-                    <td><span class="px-2 py-1 bg-slate-700 rounded text-xs">${u[k].role}</span></td>
-                    <td class="${u[k].vipUntil > Date.now() ? 'text-green-400' : 'text-slate-500'}">
-                        ${u[k].vipUntil > Date.now() ? new Date(u[k].vipUntil).toLocaleDateString() : 'Non-VIP'}
-                    </td>
-                </tr>`).join('');
+                <tr class="border-b border-slate-700"><td class="py-2 text-white">${k}</td><td>${u[k].role}</td>
+                <td>${u[k].vipUntil > Date.now() ? new Date(u[k].vipUntil).toLocaleDateString() : 'Non-VIP'}</td></tr>`).join('');
             
             tbodyT.innerHTML = Object.keys(t).map(k => `
-                <tr class="border-b border-slate-700">
-                    <td class="py-2 text-yellow-400 font-mono tracking-wider">${k}</td>
-                    <td>${t[k].duration} Hari</td>
-                    <td>
-                        ${t[k].isStatic ? '<span class="text-blue-400"><i class="fa-solid fa-infinity"></i> Static</span>' : (t[k].used ? '<span class="text-rose-500">Terpakai</span>' : '<span class="text-green-400">Aktif</span>')}
-                    </td>
-                </tr>`).join('');
+                <tr class="border-b border-slate-700"><td class="py-2 text-yellow-400 font-mono">${k}</td>
+                <td>${t[k].duration}D</td><td>${t[k].isStatic ? 'STATIC' : (t[k].used ? 'Terpakai' : 'Aktif')}</td></tr>`).join('');
         }
 
         function generateToken() {
-            const c = document.getElementById('admTokenCode').value.toUpperCase();
-            const d = parseInt(document.getElementById('admTokenDays').value);
-            
-            if(!c) return showToast("Kode tidak boleh kosong", "error");
-            
+            const c = document.getElementById('admTokenCode').value.toUpperCase(), d = parseInt(document.getElementById('admTokenDays').value);
+            if(!c) return;
             let t = getDB(DB_TOKENS);
-            if(!t[c]) { 
-                t[c] = { duration: d, used: false, isStatic: false }; 
-                setDB(DB_TOKENS, t); 
-                renderAdminPanel(); 
-                showToast("Token berhasil dibuat", "success"); 
-                document.getElementById('admTokenCode').value = '';
-            } else {
-                showToast("Kode token sudah ada", "error");
-            }
+            if(!t[c]) { t[c] = { duration: d, used: false, isStatic: false }; setDB(DB_TOKENS, t); renderAdminPanel(); showToast("Token Dibuat", "success"); }
         }
 
-        // Init saat halaman dimuat
         window.onload = () => { initSystemDB(); refreshAppUI(); };
     </script>
 </body>
